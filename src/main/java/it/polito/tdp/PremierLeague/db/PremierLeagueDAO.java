@@ -5,33 +5,45 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+
 import it.polito.tdp.PremierLeague.model.Action;
+
+import it.polito.tdp.PremierLeague.model.Arco;
 import it.polito.tdp.PremierLeague.model.Match;
 import it.polito.tdp.PremierLeague.model.Player;
 import it.polito.tdp.PremierLeague.model.Team;
 
+
+
 public class PremierLeagueDAO {
 	
-	public List<Player> listAllPlayers(){
+	public void listAllPlayers(Map<Integer, Player> idMap){
 		String sql = "SELECT * FROM Players";
-		List<Player> result = new ArrayList<Player>();
+
 		Connection conn = DBConnect.getConnection();
 
 		try {
+			
 			PreparedStatement st = conn.prepareStatement(sql);
 			ResultSet res = st.executeQuery();
 			while (res.next()) {
+				if(!idMap.containsKey(res.getInt("PlayerID"))) {
 
 				Player player = new Player(res.getInt("PlayerID"), res.getString("Name"));
-				result.add(player);
+				idMap.put(res.getInt("PlayerID"), player);
+				}
+				
 			}
 			conn.close();
-			return result;
+		
 			
-		} catch (SQLException e) {
+		}  catch (SQLException e) {
 			e.printStackTrace();
-			return null;
+			System.out.println("Errore connessione al database");
+			throw new RuntimeException("Error Connection Database");
 		}
 	}
 	
@@ -85,7 +97,8 @@ public class PremierLeagueDAO {
 	public List<Match> listAllMatches(){
 		String sql = "SELECT m.MatchID, m.TeamHomeID, m.TeamAwayID, m.teamHomeFormation, m.teamAwayFormation, m.resultOfTeamHome, m.date, t1.Name, t2.Name   "
 				+ "FROM Matches m, Teams t1, Teams t2 "
-				+ "WHERE m.TeamHomeID = t1.TeamID AND m.TeamAwayID = t2.TeamID";
+				+ "WHERE m.TeamHomeID = t1.TeamID AND m.TeamAwayID = t2.TeamID "
+				+"ORDER BY m.MatchID";
 		List<Match> result = new ArrayList<Match>();
 		Connection conn = DBConnect.getConnection();
 
@@ -110,5 +123,63 @@ public class PremierLeagueDAO {
 			return null;
 		}
 	}
+
+	public List<Player> getVertici(Match match, Map<Integer, Player> idMap) {
+		String sql = "SELECT PlayerID as id  "
+				+ "FROM Actions "
+				+ "WHERE MatchID = ? ";
+		List<Player> result = new LinkedList<>();
+		try {
+			Connection conn = DBConnect.getConnection();
+			PreparedStatement st = conn.prepareStatement(sql);
+			
+			st.setInt(1, match.getMatchID());
+		
+			ResultSet rs = st.executeQuery();
+			while (rs.next()) {
+				result.add(idMap.get(rs.getInt("id")));
+			}
+			
+			rs.close();
+			st.close();
+			conn.close();
+			return result;
+		} catch (SQLException e) {
+			e.printStackTrace();
+			System.out.println("Errore connessione al database");
+			throw new RuntimeException("Error Connection Database");
+		}
+	}
+	
+	public List<Arco> getArchi(Match m, Map<Integer,Player> idMap){
+		String sql = "SELECT a1.PlayerID as p1, a2.PlayerID as p2, "
+				+ "((a1.totalSuccessfulPassesAll + a1.assists)/a1.timePlayed - (a2.totalSuccessfulPassesAll + a2.assists)/a2.timePlayed) as peso "
+				+ "FROM Actions a1, Actions a2 "
+				+ "WHERE a1.MatchID = a2.MatchID "
+				+ "AND a1.MatchID = ? "
+				+ "AND a1.PlayerID > a2.PlayerID "
+				+ "AND a1.TeamID <> a2.TeamID";
+		
+		List<Arco> result = new ArrayList<Arco>();
+		Connection conn = DBConnect.getConnection();
+		
+		try {
+			PreparedStatement st = conn.prepareStatement(sql);
+			st.setInt(1, m.getMatchID());
+			ResultSet res = st.executeQuery();
+			while (res.next()) {
+				if(idMap.containsKey(res.getInt("p1")) && idMap.containsKey(res.getInt("p2"))) {
+					result.add(new Arco(idMap.get(res.getInt("p1")), idMap.get(res.getInt("p2")), res.getDouble("peso")));
+				}
+			}
+			
+			conn.close();
+			return result;
+		} catch (SQLException e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
+	
 	
 }
